@@ -10,6 +10,7 @@ import type {
   TeamMembersContent,
   CardContent,
   ButtonContent,
+  RegistrationFormContent,
 } from '../content'
 import TeamMembers from './TeamMembers'
 import Page from './Page'
@@ -20,6 +21,7 @@ import Hero from './Hero'
 import Tabs from './Tabs'
 import Card from './Card'
 import Button from './Button'
+import RegistrationForm from './RegistrationForm'
 
 export type ContentProps = {
   blok: Content
@@ -54,6 +56,9 @@ function Content(props: ContentProps) {
       ) : null}
       {props.blok.component === 'button' ? (
         <Button blok={props.blok as ButtonContent} />
+      ) : null}
+      {props.blok.component === 'registrationForm' ? (
+        <RegistrationForm blok={props.blok as RegistrationFormContent} />
       ) : null}
     </>
   )

@@ -118,3 +118,24 @@ export type ButtonContent = BlockContent<{
   link?: LinkContent
   color: 'primary' | 'secondary'
 }>
+
+/**
+ * RegistrationFormContent
+ *
+ * Storyblok block schema fields:
+ *  - title        (Text)   — Optional heading above the form
+ *  - subtitle     (Text)   — Optional sub-heading / description
+ *  - submitLabel  (Text)   — CTA button label (default: "Register Now")
+ *  - successMessage (Text) — Message shown after a successful submission
+ *  - apiEndpoint  (Text)   — Backend POST endpoint URL that receives the form data
+ *                            Payload shape: { firstName, lastName, email, phoneNo }
+ *                            Defaults to "/api/registration" if left empty.
+ */
+export type RegistrationFormContent = BlockContent<{
+  component: 'registrationForm'
+  title?: string
+  subtitle?: string
+  submitLabel?: string
+  successMessage?: string
+  apiEndpoint?: string
+}>

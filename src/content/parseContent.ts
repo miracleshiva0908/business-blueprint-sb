@@ -33,6 +33,7 @@ import type {
   TeamMembersContent,
   BackgroundColor,
   ButtonContent,
+  RegistrationFormContent,
 } from '.'
 
 // Recursive parsers require lazy loading
@@ -49,6 +50,7 @@ export const parseContent: Parser<Content> = lazy(() =>
     parseTeamMembersContent,
     parseTeamMemberContent,
     parseButtonContent,
+    parseRegistrationFormContent,
   ),
 )
 
@@ -214,4 +216,21 @@ export const parseButtonContent = object<ButtonContent>({
   text: parseString,
   link: withDefault(parseLinkContent, undefined),
   color: withDefault(oneOf(equals('primary'), equals('secondary')), 'primary'),
+})
+
+/**
+ * parseRegistrationFormContent
+ *
+ * All text fields are optional in the Storyblok schema so that editors can
+ * leave them empty and the component falls back to sensible defaults.
+ */
+export const parseRegistrationFormContent = object<RegistrationFormContent>({
+  component: equals('registrationForm'),
+  _uid: parseString,
+  _editable: optional(parseString),
+  title: withDefault(parseString, undefined),
+  subtitle: withDefault(parseString, undefined),
+  submitLabel: withDefault(parseString, undefined),
+  successMessage: withDefault(parseString, undefined),
+  apiEndpoint: withDefault(parseString, undefined),
 })
