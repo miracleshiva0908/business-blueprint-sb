@@ -19,6 +19,7 @@ export type Content =
   | TeamMembersContent
   | TeamMemberContent
   | ButtonContent
+  | RegistrationFormContent
 
 /**
  * When the parsing of a component fails, fall back fack to this component.
