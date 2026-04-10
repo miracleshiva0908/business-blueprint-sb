@@ -6,13 +6,10 @@ import { type BridgeSearchParams } from '../BridgeSearchParams'
  *
  * Story lookup strategy (in order of precedence):
  *  1. If the Storyblok bridge has injected an id (preview / draft mode), use that.
- *  2. Try the slug prefixed with "pages/" — e.g. "pages/registration".
- *     This matches the default blueprint folder structure.
- *  3. If the API returns 404 for the prefixed path, fall back to the bare slug
- *     — e.g. "registration". This covers stories created at the root level.
- *
- * @param slugs            Array of URL path segments for the current page.
- * @param bridgeSearchParams Parsed Storyblok bridge / preview query params.
+ *  2. For the root path (/), primary fetch is 'home'.
+ *     Fallbacks: 'pages/home', then 'en/home' (see getFallbackStoryPath).
+ *  3. For all other paths, primary is 'pages/<slug>'.
+ *     Fallback: bare '<slug>' (root level).
  */
 export const getStoryPath = (
   slugs: string[],
@@ -27,26 +24,42 @@ export const getStoryPath = (
   if (id) return id
 
   // ── Published mode: derive path from URL slugs ─────────────────────────────
-  // Empty slugs = home page
-  if (slugs.length === 0) return 'pages/home'
+  // Root URL (/) → home story. Storyblok convention is 'home' for root stories.
+  if (slugs.length === 0) return 'home'
 
-  // Default: stories live inside the "pages" folder in Storyblok.
-  // e.g. URL /registration → cdn/stories/pages/registration
+  // All other routes: prefix with 'pages/' per blueprint folder structure.
   return ['pages', ...slugs].join('/')
 }
 
 /**
- * Fallback path used when `getStoryPath` returns a "pages/…" path but the
- * Storyblok API responds with a 404.
+ * Returns an ordered list of fallback paths to try when the primary path 404s.
  *
- * Returns the bare slug (without the "pages/" prefix) so callers can retry
- * against the root of the Storyblok content tree.
+ * Home story fallback chain:
+ *   'home' → 'pages/home'
  *
- * Returns `null` if the path doesn't start with "pages/" (no fallback needed).
+ * Other pages fallback chain:
+ *   'pages/<slug>' → '<slug>'
+ */
+export const getFallbackStoryPaths = (primaryPath: string): string[] => {
+  if (primaryPath === 'home') {
+    // Root story: Storyblok slug shows as '/' in the UI.
+    // The API may serve it as 'home' or 'pages/home' depending on space setup.
+    return ['pages/home']
+  }
+
+  if (primaryPath.startsWith('pages/')) {
+    const bare = primaryPath.slice('pages/'.length)
+    return bare ? [bare] : []
+  }
+
+  return []
+}
+
+/**
+ * @deprecated Use getFallbackStoryPaths instead.
+ * Kept for backwards compatibility with page.tsx single-fallback logic.
  */
 export const getFallbackStoryPath = (primaryPath: string): string | null => {
-  if (primaryPath.startsWith('pages/')) {
-    return primaryPath.slice('pages/'.length) || null
-  }
-  return null
+  const fallbacks = getFallbackStoryPaths(primaryPath)
+  return fallbacks[0] ?? null
 }

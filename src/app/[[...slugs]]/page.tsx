@@ -1,4 +1,4 @@
-import { getStoryPath, getFallbackStoryPath } from '@/delivery-api'
+import { getStoryPath, getFallbackStoryPaths } from '@/delivery-api'
 import {
   BridgeSearchParams,
   parseBridgeSearchParams,
@@ -13,6 +13,7 @@ import {
 import { notFound } from 'next/navigation'
 import { getStoryblokApi } from '@/lib/storyblok'
 import { StoryblokStory } from '@storyblok/react/rsc'
+import type { ISbStoriesParams } from '@storyblok/react/rsc'
 
 const resolveRelations = ['teamMembers.teamMembers']
 
@@ -25,23 +26,49 @@ const parseParams = object<{ slugs: string[] }>({
   slugs: withDefault(array(parseString), []),
 })
 
+type StoryblokApiError = { status?: number; message?: string }
+
 /**
- * Fetch a story from the Storyblok Delivery API.
+ * Fetch a single story path from the Storyblok Delivery API.
+ * Returns null on 404, throws on all other errors.
+ */
+const fetchStory = async (
+  path: string,
+  options: ISbStoriesParams,
+) => {
+  const client = getStoryblokApi()
+  try {
+    const result = await client
+      .get(`cdn/stories/${path}`, options)
+      .then((r) => r.data)
+    return result
+  } catch (err: unknown) {
+    const apiErr = err as StoryblokApiError
+    if (apiErr?.status === 404) return null
+    throw new Error(
+      `Failed to fetch story at '${path}': ${apiErr?.status ?? 'unknown'} ${apiErr?.message ?? ''}`,
+    )
+  }
+}
+
+/**
+ * Fetch a story, automatically walking through fallback paths on 404.
  *
- * Automatically retries with a fallback path when the primary path (prefixed
- * with "pages/") returns a 404, allowing stories to live either inside the
- * "pages" folder OR at the root of the Storyblok content tree.
+ * Path resolution order for '/' (home):
+ *   1. 'home'
+ *   2. 'pages/home'
  *
- * @throws notFound() when neither path resolves to a story.
- * @throws Error for non-404 API failures.
+ * Path resolution order for '/registration':
+ *   1. 'pages/registration'
+ *   2. 'registration'
+ *
+ * Calls notFound() if all paths are exhausted.
  */
 const getStory = async (
   slugs: string[],
   bridgeSearchParams: BridgeSearchParams,
 ) => {
-  const client = getStoryblokApi()
-
-  const fetchOptions = {
+  const fetchOptions: ISbStoriesParams = {
     resolve_relations: resolveRelations,
     version: bridgeSearchParams.version,
     language:
@@ -51,41 +78,15 @@ const getStory = async (
   }
 
   const primaryPath = getStoryPath(slugs, bridgeSearchParams)
+  const allPaths = [primaryPath, ...getFallbackStoryPaths(primaryPath)]
 
-  // ── Primary fetch ────────────────────────────────────────────────────────
-  try {
-    const result = await client
-      .get(`cdn/stories/${primaryPath}`, fetchOptions)
-      .then((r) => r.data)
-    return result
-  } catch (primaryError: unknown) {
-    const err = primaryError as { status?: number; message?: string }
-
-    // If it's not a 404, surface the error immediately — don't retry.
-    if (err?.status !== 404) {
-      throw new Error(
-        `Failed to fetch story: ${err?.status ?? 'unknown'} ${err?.message ?? ''}`,
-      )
-    }
-
-    // ── Fallback fetch (bare slug, no "pages/" prefix) ───────────────────
-    const fallbackPath = getFallbackStoryPath(primaryPath)
-
-    if (!fallbackPath) {
-      // No fallback available — render the 404 page.
-      notFound()
-    }
-
-    try {
-      const fallbackResult = await client
-        .get(`cdn/stories/${fallbackPath}`, fetchOptions)
-        .then((r) => r.data)
-      return fallbackResult
-    } catch (fallbackError: unknown) {
-      // Both paths failed — show 404.
-      notFound()
-    }
+  for (const path of allPaths) {
+    const result = await fetchStory(path, fetchOptions)
+    if (result !== null) return result
   }
+
+  // All paths exhausted — show 404 page
+  notFound()
 }
 
 export default async function DynamicPage(props: DynamicPageProps) {
