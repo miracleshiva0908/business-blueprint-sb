@@ -1,6 +1,13 @@
 @import 'tailwindcss';
+
+/* Explicitly tell Tailwind v4 where to scan for class names.
+   All source directories must be listed here — missing a directory
+   causes those classes to be purged in production builds. */
+@source "../app";
 @source "../components";
 @source "../storyblok";
+@source "../content";
+@source "../lib";
 
 @layer base {
   body {
