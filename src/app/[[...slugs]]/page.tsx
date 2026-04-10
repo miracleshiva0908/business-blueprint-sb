@@ -1,4 +1,4 @@
-import { getStoryPath } from '@/delivery-api'
+import { getStoryPath, getFallbackStoryPath } from '@/delivery-api'
 import {
   BridgeSearchParams,
   parseBridgeSearchParams,
@@ -13,8 +13,6 @@ import {
 import { notFound } from 'next/navigation'
 import { getStoryblokApi } from '@/lib/storyblok'
 import { StoryblokStory } from '@storyblok/react/rsc'
-// Parsing: uncomment the lines below to perform runtime validation of the story content
-// import { parseContent } from '@/content'
 
 const resolveRelations = ['teamMembers.teamMembers']
 
@@ -28,10 +26,14 @@ const parseParams = object<{ slugs: string[] }>({
 })
 
 /**
- * Fetch a story from the Storyblok delivery API.
- * @throws an error if the story could not be fetched or parsed.
- * @param slugs an array of the path segments of the current page
- * @param bridgeSearchParams an object containing the parsed search parameters from the Storyblok bridge
+ * Fetch a story from the Storyblok Delivery API.
+ *
+ * Automatically retries with a fallback path when the primary path (prefixed
+ * with "pages/") returns a 404, allowing stories to live either inside the
+ * "pages" folder OR at the root of the Storyblok content tree.
+ *
+ * @throws notFound() when neither path resolves to a story.
+ * @throws Error for non-404 API failures.
  */
 const getStory = async (
   slugs: string[],
@@ -39,24 +41,51 @@ const getStory = async (
 ) => {
   const client = getStoryblokApi()
 
-  return await client
-    .get(`cdn/stories/${getStoryPath(slugs, bridgeSearchParams)}`, {
-      resolve_relations: resolveRelations,
-      version: bridgeSearchParams.version,
-      // To support internationalization in production, you'll want to adjust this;
-      //  for example, by parsing the language code from the path.
-      language:
-        bridgeSearchParams.version === 'draft'
-          ? bridgeSearchParams._storyblok_lang
-          : 'default',
-    })
-    .then((result) => result.data)
-    .catch((error: { status: number; message: string }) => {
-      if (error.status === 404) {
-        notFound()
-      }
-      throw new Error(`Failed to fetch story: ${error.status} ${error.message}`)
-    })
+  const fetchOptions = {
+    resolve_relations: resolveRelations,
+    version: bridgeSearchParams.version,
+    language:
+      bridgeSearchParams.version === 'draft'
+        ? bridgeSearchParams._storyblok_lang
+        : 'default',
+  }
+
+  const primaryPath = getStoryPath(slugs, bridgeSearchParams)
+
+  // ── Primary fetch ────────────────────────────────────────────────────────
+  try {
+    const result = await client
+      .get(`cdn/stories/${primaryPath}`, fetchOptions)
+      .then((r) => r.data)
+    return result
+  } catch (primaryError: unknown) {
+    const err = primaryError as { status?: number; message?: string }
+
+    // If it's not a 404, surface the error immediately — don't retry.
+    if (err?.status !== 404) {
+      throw new Error(
+        `Failed to fetch story: ${err?.status ?? 'unknown'} ${err?.message ?? ''}`,
+      )
+    }
+
+    // ── Fallback fetch (bare slug, no "pages/" prefix) ───────────────────
+    const fallbackPath = getFallbackStoryPath(primaryPath)
+
+    if (!fallbackPath) {
+      // No fallback available — render the 404 page.
+      notFound()
+    }
+
+    try {
+      const fallbackResult = await client
+        .get(`cdn/stories/${fallbackPath}`, fetchOptions)
+        .then((r) => r.data)
+      return fallbackResult
+    } catch (fallbackError: unknown) {
+      // Both paths failed — show 404.
+      notFound()
+    }
+  }
 }
 
 export default async function DynamicPage(props: DynamicPageProps) {
@@ -71,15 +100,6 @@ export default async function DynamicPage(props: DynamicPageProps) {
   const bridgeSearchParams = parseBridgeSearchParams(await props.searchParams)
 
   const { story } = await getStory(paramsResult.value.slugs, bridgeSearchParams)
-
-  // Parsing: uncomment the lines below to perform runtime validation of the story content
-  // const contentResult = parseContent(story.content)
-  // if (contentResult.error) {
-  //   throw new Error(
-  //     `Failed to parse story content: ${formatResult(contentResult)}`,
-  //   )
-  // }
-  // story.content = contentResult.value
 
   return (
     <StoryblokStory

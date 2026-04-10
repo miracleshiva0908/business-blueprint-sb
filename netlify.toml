@@ -6,6 +6,14 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Ensure all routes fall through to Next.js (important for catch-all [[...slugs]])
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/___netlify-handler"
+  status = 200
+  force = false
+  conditions = {Role = []}
+
 [template.environment]
   STORYBLOK_DELIVERY_API_TOKEN = "Change me to your space's Delivery API token"
-  STORYBLOK_API_BASE_URL= "https://api.storyblok.com"
+  STORYBLOK_API_BASE_URL = "https://api.storyblok.com"
