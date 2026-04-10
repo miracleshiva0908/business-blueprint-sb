@@ -29,40 +29,31 @@ const parseParams = object<{ slugs: string[] }>({
 type StoryblokApiError = { status?: number; message?: string }
 
 /**
- * Fetch a single story path from the Storyblok Delivery API.
- * Returns null on 404, throws on all other errors.
+ * Fetch a single story path. Returns null on 404, throws on all other errors.
  */
-const fetchStory = async (
-  path: string,
-  options: ISbStoriesParams,
-) => {
+const fetchStory = async (path: string, options: ISbStoriesParams) => {
   const client = getStoryblokApi()
   try {
     const result = await client
       .get(`cdn/stories/${path}`, options)
       .then((r) => r.data)
+    console.info(`[story] ✓ Found story at path: '${path}'`)
     return result
   } catch (err: unknown) {
     const apiErr = err as StoryblokApiError
-    if (apiErr?.status === 404) return null
+    if (apiErr?.status === 404) {
+      console.info(`[story] ✗ 404 at path: '${path}'`)
+      return null
+    }
     throw new Error(
-      `Failed to fetch story at '${path}': ${apiErr?.status ?? 'unknown'} ${apiErr?.message ?? ''}`,
+      `[story] Error fetching '${path}': ${apiErr?.status ?? 'unknown'} ${apiErr?.message ?? ''}`,
     )
   }
 }
 
 /**
- * Fetch a story, automatically walking through fallback paths on 404.
- *
- * Path resolution order for '/' (home):
- *   1. 'home'
- *   2. 'pages/home'
- *
- * Path resolution order for '/registration':
- *   1. 'pages/registration'
- *   2. 'registration'
- *
- * Calls notFound() if all paths are exhausted.
+ * Walk through primary path then all fallbacks until a story is found.
+ * If all paths fail, calls Next.js notFound() to render the 404 page.
  */
 const getStory = async (
   slugs: string[],
@@ -80,12 +71,14 @@ const getStory = async (
   const primaryPath = getStoryPath(slugs, bridgeSearchParams)
   const allPaths = [primaryPath, ...getFallbackStoryPaths(primaryPath)]
 
+  console.info(`[story] Resolving slugs: [${slugs.join(', ') || '/'}] → trying paths: [${allPaths.join(', ')}]`)
+
   for (const path of allPaths) {
     const result = await fetchStory(path, fetchOptions)
     if (result !== null) return result
   }
 
-  // All paths exhausted — show 404 page
+  console.info(`[story] All paths exhausted for slugs: [${slugs.join(', ') || '/'}] → rendering 404`)
   notFound()
 }
 
@@ -94,20 +87,17 @@ export default async function DynamicPage(props: DynamicPageProps) {
 
   if (paramsResult.error) {
     throw new Error(
-      `Failed to parse params: the folders in the app directory are likely misconfigured ${formatResult(paramsResult)}`,
+      `Failed to parse params: ${formatResult(paramsResult)}`,
     )
   }
 
   const bridgeSearchParams = parseBridgeSearchParams(await props.searchParams)
-
   const { story } = await getStory(paramsResult.value.slugs, bridgeSearchParams)
 
   return (
     <StoryblokStory
       story={story}
-      bridgeOptions={{
-        resolveRelations,
-      }}
+      bridgeOptions={{ resolveRelations }}
     />
   )
 }
